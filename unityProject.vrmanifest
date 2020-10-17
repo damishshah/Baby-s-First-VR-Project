@@ -1,0 +1,16 @@
+{
+  "source": "Unity",
+  "applications": [
+    {
+      "app_key": "application.generated.unity.babysfirstvrproject.exe",
+      "launch_type": "url",
+      "url": "steam://launch/",
+      "action_manifest_path": "F:\\Projects\\Baby's First VR Project\\Assets\\StreamingAssets\\SteamVR\\actions.json",
+      "strings": {
+        "en_us": {
+          "name": "Baby's First VR Project [Testing]"
+        }
+      }
+    }
+  ]
+}
