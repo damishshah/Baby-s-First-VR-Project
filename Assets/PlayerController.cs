@@ -20,6 +20,7 @@ namespace Valve.VR.InteractionSystem
         private const float lookBackWindowInSeconds = 0.3f;
         private const float velocityThreshold = 0.3f;
         private const float verticalMoveDistanceThreshold = 0.1f;
+        private const float minimalDistanceThreshold = 0.1f;
 
         Player player;
         Rigidbody playerRigidBody;
@@ -66,6 +67,14 @@ namespace Valve.VR.InteractionSystem
 
         private void Update()
         {
+            // If an ability was just activated but was finished, invalidate all controller memory positions:
+            //  We do not want gestures performed while an ability is activating to trigger an accidental follow-up activation.
+            if (abilityActivated && !wallIsMaking && !rockIsActive)
+            {
+                invalidateControllerPositions();
+                abilityActivated = false;
+            }
+
             analyzeStaticGestures(hands[0]);
             analyzeDynamicGestures(hands[0]);
         }
@@ -95,7 +104,7 @@ namespace Valve.VR.InteractionSystem
         {
             // TODO: Figure out if our recognizeFist method needs augmentation for different controller types
             //          Might need to use: hand.IsGrabbingWithType(GrabTypes.Grip)
-            if (!abilityActivated && !wallIsMaking)
+            if (!abilityActivated)
             {
                 // Check wall making gesture
                 if (bothFistsMovingUp(pastControllerPositions, lookBackWindowInSeconds))
@@ -121,11 +130,6 @@ namespace Valve.VR.InteractionSystem
                     summonRock(hand.otherHand);
                 }
             }
-
-            if (!recognizeFist(hand) && !recognizeFist(hand.otherHand) && !wallIsMaking && !rockIsActive)
-            {
-                abilityActivated = false;
-            }
         }
 
         private bool bothFistsMovingUp(List<ControllerPositions> pastControllerPositions, float lookBackWindowInSeconds)
@@ -135,7 +139,6 @@ namespace Valve.VR.InteractionSystem
             if (bothFistsMovingUp)
             {
                 Debug.Log("Both hands moving up!");
-                invalidateControllerPositions();
                 return true;
             }
 
@@ -261,6 +264,10 @@ namespace Valve.VR.InteractionSystem
         }
         private bool recognizeFist(Hand hand)
         {
+            if (hand == null) {
+                return false;
+            }
+
             SteamVR_Behaviour_Skeleton skeleton = hand.skeleton;
             if (skeleton != null)
             {
@@ -312,17 +319,15 @@ namespace Valve.VR.InteractionSystem
         {
             yield return riseAtSpeed(obj, finalObjectPosition, speedMultiplier * getHandsSpeed());
 
-            if (obj.transform.position == finalObjectPosition)
-            {
-                wallIsMaking = false;
-                Debug.Log("wall making complete");
-            }
+            wallIsMaking = false;
+            Debug.Log("wall making complete");
         }
 
         // ------------------------------------------------------- Rock Floating -------------------------------------------------------
 
         float rockSummonSpeed = .1f;
-        float rockForwardDistance = 1f;
+        float rockForwardDistance = .7f;
+        float rockDragForce = 7f;
         private void summonRock(Hand hand)
         {
             if (rockObject != null)
@@ -340,6 +345,9 @@ namespace Valve.VR.InteractionSystem
         {
             rockObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
             rockObject.transform.localScale = new Vector3(.25f, .25f, .25f);
+            rockObject.AddComponent<Rigidbody>();
+            rockObject.GetComponent<Rigidbody>().useGravity = false;
+            rockObject.GetComponent<Rigidbody>().drag = rockDragForce;
 
             spawnObjectInFrontOfPlayer(rockObject, rockForwardDistance);
             moveObjectBelowGround(rockObject);
@@ -350,10 +358,11 @@ namespace Valve.VR.InteractionSystem
 
         IEnumerator rockRisingCoroutine(GameObject obj, Vector3 finalObjectPosition, float speed, Hand hand, float rockForwardDistance)
         {
-            yield return riseAtSpeed(obj, finalObjectPosition, speed);
             yield return floatInFrontOfHand(obj, hand, rockForwardDistance);
 
             Debug.Log("rock sequence complete");
+            rockObject.GetComponent<Rigidbody>().useGravity = true;
+            rockObject.GetComponent<Rigidbody>().drag = 0f;
             rockIsActive = false;
         }
 
@@ -379,37 +388,30 @@ namespace Valve.VR.InteractionSystem
         {
             float step = speed * Time.deltaTime;
 
-            while (obj.transform.position != finalPosition)
+            while (Vector3.Distance(obj.transform.position,finalPosition) > minimalDistanceThreshold)
             {
                 obj.transform.position = Vector3.MoveTowards(obj.transform.position, finalPosition, speed);
                 yield return null;
             }
         }
 
-        float tolerance = 1f;
-        float floatSpeed = 1.5f;
+        float floatSpeed = 30f;
         float floatMovementThreshold = .3f;
         IEnumerator floatInFrontOfHand(GameObject obj, Hand hand, float forwardDistance) {
-            float step = floatSpeed * Time.deltaTime;
-
             while (rockIsActive && recognizeFist(hand)) {
-                Vector3 finalPosition = hand.trackedObject.transform.position + (hand.trackedObject.transform.up * -1f * forwardDistance);
+                Vector3 finalPosition = getFloatingPositionInFrontOfHand(hand, forwardDistance);
 
-                if (Vector3.Distance(obj.transform.position,finalPosition) > floatMovementThreshold) {
-                    obj.transform.position = Vector3.MoveTowards(obj.transform.position, finalPosition, step);
-                }
-
-                // Keep upper bound
-                if (obj.transform.position.y > transform.Find("SteamVRObjects/VRCamera").transform.position.y + tolerance) {
-                    obj.transform.position = new Vector3(obj.transform.position.x, transform.Find("SteamVRObjects/VRCamera").transform.position.y + tolerance, obj.transform.position.z);
-                }
-                // Keep lower bound
-                if (obj.transform.position.y < 0.0f) {
-                    obj.transform.position = new Vector3(obj.transform.position.x, 0.0f, obj.transform.position.z);
+                if (Vector3.Distance(obj.transform.position, finalPosition) > floatMovementThreshold) {
+                    Vector3 direction = finalPosition - obj.transform.position;
+                    obj.GetComponent<Rigidbody>().AddForce(direction*floatSpeed);
                 }
 
                 yield return null;
             }
+        }
+
+        private Vector3 getFloatingPositionInFrontOfHand(Hand hand, float forwardDistance) {
+            return hand.trackedObject.transform.position + (-1f * hand.trackedObject.transform.up * forwardDistance);
         }
 
         // ------------------------------------------------------- Hand Util Methods -------------------------------------------------------
