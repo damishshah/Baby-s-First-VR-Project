@@ -6,7 +6,6 @@ using System.Text;
 
 using UnityEngine;
 
-
 namespace Valve.VR.InteractionSystem
 {
     public class PlayerController : MonoBehaviour
@@ -29,17 +28,16 @@ namespace Valve.VR.InteractionSystem
         bool wallIsMaking = false;
         bool rockIsActive = false;
 
-        Hand[] hands = new Hand[2];
-        List<ControllerPositions> pastControllerPositions;
+        TrackedHand leftHand;
+        TrackedHand rightHand;
 
         void Start()
         {
             // Object instantiation
             player = GetComponent<Player>();
             playerRigidBody = GetComponent<Rigidbody>();
-            hands[0] = player.leftHand;
-            hands[1] = player.rightHand;
-            clearTrackingMemory();
+            leftHand = new TrackedHand(player.leftHand);
+            rightHand = new TrackedHand(player.rightHand);
 
             // Start repeating processes
             InvokeRepeating("UpdateAtInterval", 0, handPositionMemoryInterval);
@@ -51,18 +49,8 @@ namespace Valve.VR.InteractionSystem
 
         private void UpdateAtInterval()
         {
-            pastControllerPositions.Add(
-                getCurrentControllerPositionForTwoHands(hands[0], hands[1]));
-
-            managePastControllerPositionsSize();
-        }
-
-        public void managePastControllerPositionsSize()
-        {
-            if (pastControllerPositions.Count > maxMemoryIntervalStorageSize)
-            {
-                pastControllerPositions.RemoveAt(0);
-            }
+            leftHand.addCurrentPosition();
+            rightHand.addCurrentPosition();
         }
 
         private void Update()
@@ -71,12 +59,13 @@ namespace Valve.VR.InteractionSystem
             //  We do not want gestures performed while an ability is activating to trigger an accidental follow-up activation.
             if (abilityActivated && !wallIsMaking && !rockIsActive)
             {
-                invalidateControllerPositions();
+                leftHand.invalidateTrackingMemory();
+                rightHand.invalidateTrackingMemory();
                 abilityActivated = false;
             }
 
-            analyzeStaticGestures(hands[0]);
-            analyzeDynamicGestures(hands[0]);
+            analyzeStaticGestures();
+            analyzeDynamicGestures();
         }
 
         private void jump()
@@ -85,29 +74,16 @@ namespace Valve.VR.InteractionSystem
             playerRigidBody.AddForce(Vector2.up * jumpSpeed); ;
         }
 
-        private void clearTrackingMemory()
-        {
-            pastControllerPositions = new List<ControllerPositions>();
-        }
-
-        private void invalidateControllerPositions()
-        {
-            foreach (var controllerPositions in pastControllerPositions)
-            {
-                controllerPositions.isValid = false;
-            }
-        }
-
         // ------------------------------------------------------- Dynamic Gesture Recognition -------------------------------------------------------
 
-        private void analyzeDynamicGestures(Hand hand)
+        private void analyzeDynamicGestures()
         {
             // TODO: Figure out if our recognizeFist method needs augmentation for different controller types
             //          Might need to use: hand.IsGrabbingWithType(GrabTypes.Grip)
             if (!abilityActivated)
             {
                 // Check wall making gesture
-                if (bothFistsMovingUp(pastControllerPositions, lookBackWindowInSeconds))
+                if (bothFistsMovingUp())
                 {
                     Debug.Log("Triggering wall summon!");
                     abilityActivated = true;
@@ -115,68 +91,71 @@ namespace Valve.VR.InteractionSystem
                     summonWall();
                 }
                 // Check rock lifting gesture
-                else if (leftFistMovingUp(pastControllerPositions, lookBackWindowInSeconds))
+                else if (isFistAndMovingUp(leftHand))
                 {
                     Debug.Log("Triggering left rock summon!");
                     abilityActivated = true;
                     rockIsActive = true;
-                    summonRock(hand);
+                    summonRock(leftHand);
                 }
-                else if (rightFistMovingUp(pastControllerPositions, lookBackWindowInSeconds))
+                else if (isFistAndMovingUp(rightHand))
                 {
                     Debug.Log("Triggering right rock summon!");
                     abilityActivated = true;
                     rockIsActive = true;
-                    summonRock(hand.otherHand);
+                    summonRock(rightHand);
                 }
             }
+            // else if (abilityActivated && rockIsActive) {
+            //     if (oneHandPunching(pastControllerPositions, lookBackWindowInSeconds)) {
+            //         Debug.Log("Triggering rock punch!");
+            //         // Trigger the end of the rock floating ability
+            //         abilityActivated = false;
+            //         rockIsActive = false;
+            //         punchRock();
+            //     }
+            // }
         }
 
-        private bool bothFistsMovingUp(List<ControllerPositions> pastControllerPositions, float lookBackWindowInSeconds)
+        private bool bothFistsMovingUp() { return isFistAndMovingUp(leftHand) && isFistAndMovingUp(rightHand); }
+
+        private bool isFistAndMovingUp(TrackedHand hand)
         {
-            bool bothFistsMovingUp = leftFistMovingUp(pastControllerPositions, lookBackWindowInSeconds) && rightFistMovingUp(pastControllerPositions, lookBackWindowInSeconds);
-
-            if (bothFistsMovingUp)
-            {
-                Debug.Log("Both hands moving up!");
-                return true;
-            }
-
-            return false;
-        }
-
-        // There is a method for both the right/left hands for overall design readibility here, I'd like to consider refactoring these into one method in the future.
-        private bool leftFistMovingUp(List<ControllerPositions> pastControllerPositions, float lookBackWindowInSeconds)
-        {
-            ControllerPositions latestPositions = pastControllerPositions[pastControllerPositions.Count - 1];
-            int lookBackWindowIndex = (int)(lookBackWindowInSeconds / handPositionMemoryInterval);
+            int lookBackWindowIndex = hand.getIndexForPastTimeSeconds(lookBackWindowInSeconds);
 
             // Validate that we have enough position memory
-            if (pastControllerPositions.Count < lookBackWindowIndex)
+            if (hand.pastControllerPositions.Count < lookBackWindowIndex)
             {
                 Debug.Log("Not enough look back positions");
                 return false;
             }
 
-            for (int i = 1; i <= lookBackWindowIndex; i++)
+            for (int i = 0; i < lookBackWindowIndex; i++)
             {
-                int indexFromEnd = pastControllerPositions.Count - i;
                 // Validate validity requirement
-                if (!pastControllerPositions[indexFromEnd].isValid)
+                if (!hand.pastControllerPositions[i].isValid)
                 {
                     Debug.Log("Not enough valid look back positions");
                     return false;
                 }
 
-                if (!isControllerPositionFistAndMovingUp(pastControllerPositions[indexFromEnd].left, velocityThreshold))
+                // Validate grip requirement
+                if (!hand.pastControllerPositions[i].isGripping)
                 {
-                    Debug.Log("Left hand not a fist or moving fast enough");
+                    Debug.Log("Hands were not gripped long enough");
+                    return false;
+                }
+
+                // Validate velocity requirement
+                if (hand.pastControllerPositions[i].velocity.y < velocityThreshold)
+                {
+                    Debug.Log("Velocity threshold not met");
                     return false;
                 }
             }
 
             // Validate distance requirement over lookback window
-            float leftHandDistanceMoved = latestPositions.left.distanceBetweenY(pastControllerPositions[pastControllerPositions.Count - lookBackWindowIndex].left);
+            float leftHandDistanceMoved = hand.getPosition().y - hand.pastControllerPositions[lookBackWindowIndex - 1].position.y;
             if (leftHandDistanceMoved < verticalMoveDistanceThreshold)
             {
                 Debug.Log("Left hand distance threshold not met");
@@ -186,57 +165,17 @@ namespace Valve.VR.InteractionSystem
             return true;
         }
 
-        private bool rightFistMovingUp(List<ControllerPositions> pastControllerPositions, float lookBackWindowInSeconds)
-        {
-            ControllerPositions latestPositions = pastControllerPositions[pastControllerPositions.Count - 1];
-            int lookBackWindowIndex = (int)(lookBackWindowInSeconds / handPositionMemoryInterval);
-
-            // Validate that we have enough position memory
-            if (pastControllerPositions.Count < lookBackWindowIndex)
-            {
-                Debug.Log("Not enough look back positions");
-                return false;
-            }
-
-            for (int i = 1; i <= lookBackWindowIndex; i++)
-            {
-                int indexFromEnd = pastControllerPositions.Count - i;
-                // Validate validity requirement
-                if (!pastControllerPositions[indexFromEnd].isValid)
-                {
-                    Debug.Log("Not enough valid look back positions");
-                    return false;
-                }
-
-                if (!isControllerPositionFistAndMovingUp(pastControllerPositions[indexFromEnd].right, velocityThreshold))
-                {
-                    Debug.Log("Right hand not a fist or moving fast enough");
-                    return false;
-                }
-            }
-
-            // Validate distance requirement over lookback window
-            float rightHandDistanceMoved = latestPositions.right.distanceBetweenY(pastControllerPositions[pastControllerPositions.Count - lookBackWindowIndex].right);
-            if (rightHandDistanceMoved < verticalMoveDistanceThreshold)
-            {
-                Debug.Log("Right hand Distance threshold not met");
-                return false;
-            }
-
-            return true;
-        }
-
         // ------------------------------------------------------- Static Gesture Recognition -------------------------------------------------------
 
-        private void analyzeStaticGestures(Hand hand)
+        private void analyzeStaticGestures()
         {
-            if (hand.skeleton != null)
+            if (leftHand.getSkeleton() != null)
             {
-                recognizePeaceSign(hand.skeleton);
+                recognizePeaceSign(leftHand.getSkeleton());
             }
-            if (hand.otherHand.skeleton != null)
+            if (rightHand.getSkeleton() != null)
             {
-                recognizePeaceSign(hand.otherHand.skeleton);
+                recognizePeaceSign(rightHand.getSkeleton());
             }
         }
 
@@ -262,23 +201,19 @@ namespace Valve.VR.InteractionSystem
 
             lastPeaceSignState = currentPeaceSignState;
         }
-        private bool recognizeFist(Hand hand)
+        private bool recognizePlayerFist(TrackedHand hand)
         {
-            if (hand == null) {
+            if (hand == null)
+            {
                 return false;
             }
 
-            SteamVR_Behaviour_Skeleton skeleton = hand.skeleton;
+            SteamVR_Behaviour_Skeleton skeleton = hand.getSkeleton();
             if (skeleton != null)
             {
-                return (
-                    // skeleton.thumbCurl >= closedThumbAmount &&
-                    skeleton.indexCurl >= closedFingerAmount &&
-                    skeleton.middleCurl >= closedFingerAmount &&
-                    skeleton.ringCurl >= closedFingerAmount //&& 
-                                                            // skeleton.pinkyCurl >= closedFingerAmount
-                    );
+                return hand.recognizeFist();
             }
+
             return abilityActivated;
         }
 
@@ -287,7 +222,7 @@ namespace Valve.VR.InteractionSystem
         // TODO: These placeholder objects need to be refactored and passed into the below methods
         GameObject wallObject = null;
         GameObject rockObject = null;
-        private const float speedMultiplier = 7.0f;
+        private const float wallRisingSpeed = 7f;
         private const float wallForwardDistance = 1.5f;
 
         private void summonWall()
@@ -300,7 +235,7 @@ namespace Valve.VR.InteractionSystem
             GameObject wall = spawnWall();
 
             Vector3 finalWallPosition = new Vector3(wall.transform.position.x, wall.transform.localScale.y * 0.5f, wall.transform.position.z);
-            StartCoroutine(wallRisingCoroutine(wall, finalWallPosition, speedMultiplier * getHandsSpeed()));
+            StartCoroutine(wallRisingCoroutine(wall, finalWallPosition, wallRisingSpeed));
         }
 
         private GameObject spawnWall()
@@ -317,7 +252,7 @@ namespace Valve.VR.InteractionSystem
 
         IEnumerator wallRisingCoroutine(GameObject obj, Vector3 finalObjectPosition, float speed)
         {
-            yield return riseAtSpeed(obj, finalObjectPosition, speedMultiplier * getHandsSpeed());
+            yield return riseAtSpeed(obj, finalObjectPosition, speed);
 
             wallIsMaking = false;
             Debug.Log("wall making complete");
@@ -326,9 +261,10 @@ namespace Valve.VR.InteractionSystem
         // ------------------------------------------------------- Rock Floating -------------------------------------------------------
 
         float rockSummonSpeed = .1f;
-        float rockForwardDistance = .7f;
+        float rockForwardFloatDistance = .7f;
+        // float rockForwardSummonDistance = 1.5f;
         float rockDragForce = 7f;
-        private void summonRock(Hand hand)
+        private void summonRock(TrackedHand hand)
         {
             if (rockObject != null)
             {
@@ -338,7 +274,7 @@ namespace Valve.VR.InteractionSystem
             GameObject rock = spawnRock();
 
             Vector3 finalRockPosition = new Vector3(rock.transform.position.x, transform.Find("SteamVRObjects/VRCamera").transform.position.y, rock.transform.position.z);
-            StartCoroutine(rockRisingCoroutine(rock, finalRockPosition, rockSummonSpeed, hand, rockForwardDistance));
+            StartCoroutine(rockAbilityCoroutine(rock, finalRockPosition, rockSummonSpeed, hand, rockForwardFloatDistance));
         }
 
         private GameObject spawnRock()
@@ -349,21 +285,26 @@ namespace Valve.VR.InteractionSystem
             rockObject.GetComponent<Rigidbody>().useGravity = false;
             rockObject.GetComponent<Rigidbody>().drag = rockDragForce;
 
-            spawnObjectInFrontOfPlayer(rockObject, rockForwardDistance);
+            spawnObjectInFrontOfPlayer(rockObject, rockForwardFloatDistance);
             moveObjectBelowGround(rockObject);
             faceObjectToPlayer(rockObject);
 
             return rockObject;
         }
 
-        IEnumerator rockRisingCoroutine(GameObject obj, Vector3 finalObjectPosition, float speed, Hand hand, float rockForwardDistance)
+        IEnumerator rockAbilityCoroutine(GameObject obj, Vector3 finalObjectPosition, float speed, TrackedHand hand, float rockForwardFloatDistance)
         {
-            yield return floatInFrontOfHand(obj, hand, rockForwardDistance);
+            yield return floatInFrontOfHand(obj, hand, rockForwardFloatDistance);
 
             Debug.Log("rock sequence complete");
             rockObject.GetComponent<Rigidbody>().useGravity = true;
             rockObject.GetComponent<Rigidbody>().drag = 0f;
             rockIsActive = false;
+        }
+
+        private void punchRock(Vector3 direction, float force)
+        {
+
         }
 
         // ------------------------------------------------------- Util Methods -------------------------------------------------------
@@ -388,119 +329,34 @@ namespace Valve.VR.InteractionSystem
         {
             float step = speed * Time.deltaTime;
 
-            while (Vector3.Distance(obj.transform.position,finalPosition) > minimalDistanceThreshold)
+            while (Vector3.Distance(obj.transform.position, finalPosition) > minimalDistanceThreshold)
             {
-                obj.transform.position = Vector3.MoveTowards(obj.transform.position, finalPosition, speed);
+                obj.transform.position = Vector3.MoveTowards(obj.transform.position, finalPosition, step);
                 yield return null;
             }
         }
 
         float floatSpeed = 30f;
         float floatMovementThreshold = .3f;
-        IEnumerator floatInFrontOfHand(GameObject obj, Hand hand, float forwardDistance) {
-            while (rockIsActive && recognizeFist(hand)) {
+        IEnumerator floatInFrontOfHand(GameObject obj, TrackedHand hand, float forwardDistance)
+        {
+            while (rockIsActive && recognizePlayerFist(hand))
+            {
                 Vector3 finalPosition = getFloatingPositionInFrontOfHand(hand, forwardDistance);
 
-                if (Vector3.Distance(obj.transform.position, finalPosition) > floatMovementThreshold) {
+                if (Vector3.Distance(obj.transform.position, finalPosition) > floatMovementThreshold)
+                {
                     Vector3 direction = finalPosition - obj.transform.position;
-                    obj.GetComponent<Rigidbody>().AddForce(direction*floatSpeed);
+                    obj.GetComponent<Rigidbody>().AddForce(direction * floatSpeed);
                 }
 
                 yield return null;
             }
         }
 
-        private Vector3 getFloatingPositionInFrontOfHand(Hand hand, float forwardDistance) {
-            return hand.trackedObject.transform.position + (-1f * hand.trackedObject.transform.up * forwardDistance);
-        }
-
-        // ------------------------------------------------------- Hand Util Methods -------------------------------------------------------
-
-        private ControllerPositions getCurrentControllerPositionForTwoHands(Hand hand, Hand otherHand)
+        private Vector3 getFloatingPositionInFrontOfHand(TrackedHand hand, float forwardDistance)
         {
-            return new ControllerPositions(
-                new ControllerPosition(
-                    hand.trackedObject.transform.position,
-                    hand.trackedObject.GetVelocity(),
-                    recognizeFist(hand)),
-                new ControllerPosition(
-                    otherHand.trackedObject.transform.position,
-                    otherHand.trackedObject.GetVelocity(),
-                    recognizeFist(otherHand))
-            );
-        }
-
-        private float getHandsSpeed()
-        {
-            ControllerPositions initialPosition = pastControllerPositions[pastControllerPositions.Count / 2];
-            float rightStartPositionY = initialPosition.right.position.y;
-            return (pastControllerPositions[pastControllerPositions.Count - 1].right.position.y - initialPosition.right.position.y) * Time.deltaTime;
-        }
-
-        private bool isControllerPositionFistAndMovingUp(ControllerPosition controllerPosition, float velocityThreshold)
-        {
-            // Validate grip requirement
-            if (!controllerPosition.isGripping)
-            {
-                Debug.Log("Hands were not gripped long enough");
-                return false;
-            }
-            // Validate velocity requirement
-            if (controllerPosition.velocity.y < velocityThreshold)
-            {
-                Debug.Log("Velocity threshold not met");
-                return false;
-            }
-
-            Debug.Log("Fist was moving up!");
-            return true;
-        }
-
-        // ------------------------------------------------------- Private Classes -------------------------------------------------------
-
-        private class ControllerPositions
-        {
-            public ControllerPosition left { get; set; }
-            public ControllerPosition right { get; set; }
-            public bool isValid { get; set; }
-
-            public ControllerPositions(ControllerPosition left, ControllerPosition right, bool isValid)
-            {
-                this.left = left;
-                this.right = right;
-                this.isValid = isValid;
-            }
-
-            public ControllerPositions(ControllerPosition left, ControllerPosition right) : this(left, right, true) { }
-
-            override public string ToString()
-            {
-                return "left:{" + left + "}, right:{" + right + "}";
-            }
-        }
-
-        private class ControllerPosition
-        {
-            public Vector3 position { get; set; }
-            public Vector3 velocity { get; set; }
-            public bool isGripping { get; set; }
-
-            public ControllerPosition(Vector3 position, Vector3 velocity, bool isGripping)
-            {
-                this.position = position;
-                this.velocity = velocity;
-                this.isGripping = isGripping;
-            }
-
-            public float distanceBetweenY(ControllerPosition otherController)
-            {
-                return this.position.y - otherController.position.y;
-            }
-
-            override public string ToString()
-            {
-                return "position:{" + position + "}, velocity:{" + velocity + "}, isGripping:{" + isGripping + "}";
-            }
+            return hand.getPosition() + (-1f * hand.getTransform().up * forwardDistance);
         }
     }
 }
