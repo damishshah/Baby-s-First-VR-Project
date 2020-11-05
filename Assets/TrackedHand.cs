@@ -11,7 +11,7 @@ namespace Valve.VR.InteractionSystem
     public class TrackedHand
     {
         private const float openFingerAmount = 0.1f;
-        private const float closedFingerAmount = 0.9f;
+        private const float closedFingerAmount = 0.75f;
         private const float closedThumbAmount = 0.4f;
         private const float jumpSpeed = 10.0f;
         private const float handPositionMemoryInterval = 0.1f;
