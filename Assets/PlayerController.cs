@@ -10,6 +10,8 @@ namespace Valve.VR.InteractionSystem
 {
     public class PlayerController : MonoBehaviour
     {
+        public GameObject wallPrefab;
+
         private const float openFingerAmount = 0.1f;
         private const float closedFingerAmount = 0.9f;
         private const float closedThumbAmount = 0.4f;
@@ -251,22 +253,15 @@ namespace Valve.VR.InteractionSystem
 
         private void summonWall()
         {
-            if (wallObject != null)
-            {
-                Destroy(wallObject);
-            }
-
             GameObject wall = spawnWall();
 
-            Vector3 finalWallPosition = new Vector3(wall.transform.position.x, wall.transform.localScale.y * 0.5f, wall.transform.position.z);
+            Vector3 finalWallPosition = new Vector3(wall.transform.position.x, 0.0f, wall.transform.position.z);
             StartCoroutine(wallRisingCoroutine(wall, finalWallPosition, wallRisingSpeed));
         }
 
         private GameObject spawnWall()
         {
-            wallObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wallObject.transform.localScale = new Vector3(2f, 2f, .25f);
-
+            wallObject = GameObject.Instantiate(wallPrefab);
             spawnObjectInFrontOfPlayer(wallObject, wallForwardDistance);
             moveObjectBelowGround(wallObject);
             faceObjectToPlayer(wallObject);
@@ -335,7 +330,7 @@ namespace Valve.VR.InteractionSystem
 
         private void moveObjectBelowGround(GameObject obj)
         {
-            obj.transform.position = new Vector3(obj.transform.position.x, -.5f * obj.transform.localScale.y, obj.transform.position.z);
+            obj.transform.position = new Vector3(obj.transform.position.x, -1f * obj.transform.localScale.y, obj.transform.position.z);
         }
 
         private void faceObjectToPlayer(GameObject obj)
