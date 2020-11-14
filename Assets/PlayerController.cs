@@ -21,7 +21,7 @@ namespace Valve.VR.InteractionSystem
         private const float lookBackWindowInSeconds = 0.3f;
         private const float velocityThreshold = 0.3f;
         private const float verticalMoveDistanceThreshold = 0.35f;
-        private const float punchDistanceThreshold = 0.30f;
+        private const float punchDistanceThreshold = 0.25f;
         private const float minimalDistanceThreshold = 0.1f;
         private const float rockPunchActivationDistance = 0.6f;
 
@@ -298,6 +298,8 @@ namespace Valve.VR.InteractionSystem
             rockObject.AddComponent<Rigidbody>();
             rockObject.GetComponent<Rigidbody>().useGravity = false;
             rockObject.GetComponent<Rigidbody>().drag = rockDragForce;
+            rockObject.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Continuous;
+            rockObject.AddComponent<DestroyOnImpact>();
 
             spawnObjectInFrontOfPlayer(rockObject, rockForwardFloatDistance);
             moveObjectBelowGround(rockObject);
