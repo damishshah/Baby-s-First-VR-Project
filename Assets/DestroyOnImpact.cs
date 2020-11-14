@@ -6,13 +6,13 @@ public class DestroyOnImpact : MonoBehaviour
 {
     void OnCollisionEnter(Collision collision)
     {
-        if (shouldTriggerShatter(collision))
+        if (shouldTriggerDestroy(collision))
         {
             Destroy(gameObject);
         }
     }
 
-    private bool shouldTriggerShatter(Collision collision) {
+    private bool shouldTriggerDestroy(Collision collision) {
         return collision.gameObject.tag == "wall" && collision.relativeVelocity.magnitude > 2;
     }
 }

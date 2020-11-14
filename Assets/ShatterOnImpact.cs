@@ -6,12 +6,27 @@ public class ShatterOnImpact : MonoBehaviour
 {
     public GameObject replacement;
 
+    public float radius = 5.0F;
+    public float power = 500.0F;
+
     void OnCollisionEnter(Collision collision)
     {
         if (shouldTriggerShatter(collision))
         {
-            GameObject.Instantiate(replacement, transform.position, transform.rotation);
             Destroy(gameObject);
+            GameObject.Instantiate(replacement, transform.position, transform.rotation);
+
+            Vector3 collisionLocation = collision.contacts[0].point;
+            Collider[] colliders = Physics.OverlapSphere(collisionLocation, radius);
+            foreach (Collider hit in colliders)
+            {
+                Rigidbody rb = hit.GetComponent<Rigidbody>();
+
+                if (hit.tag == "wall" && rb != null) {
+                    Debug.Log(hit.tag);
+                    rb.AddExplosionForce(power, collisionLocation, radius);
+                }
+            }
         }
     }
 
