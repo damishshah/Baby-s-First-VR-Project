@@ -255,7 +255,7 @@ namespace Valve.VR.InteractionSystem
         {
             GameObject wall = spawnWall();
 
-            Vector3 finalWallPosition = new Vector3(wall.transform.position.x, 0.0f, wall.transform.position.z);
+            Vector3 finalWallPosition = new Vector3(wall.transform.position.x, Terrain.activeTerrain.SampleHeight(wall.transform.position), wall.transform.position.z);
             StartCoroutine(wallRisingCoroutine(wall, finalWallPosition, wallRisingSpeed));
         }
 
@@ -287,10 +287,10 @@ namespace Valve.VR.InteractionSystem
         {
             GameObject rock = spawnRock();
 
-            Vector3 finalRockPosition = new Vector3(rock.transform.position.x, transform.Find("SteamVRObjects/VRCamera").transform.position.y, rock.transform.position.z);
-            StartCoroutine(rockAbilityCoroutine(rock, finalRockPosition, rockSummonSpeed, hand, rockForwardFloatDistance));
+            StartCoroutine(rockAbilityCoroutine(rock, rockSummonSpeed, hand, rockForwardFloatDistance));
         }
 
+        public Material rockMaterial;
         private GameObject spawnRock()
         {
             rockObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -299,6 +299,7 @@ namespace Valve.VR.InteractionSystem
             rockObject.GetComponent<Rigidbody>().useGravity = false;
             rockObject.GetComponent<Rigidbody>().drag = rockDragForce;
             rockObject.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Continuous;
+            rockObject.GetComponent<Renderer>().material = rockMaterial;
             rockObject.AddComponent<DestroyOnImpact>();
 
             spawnObjectInFrontOfPlayer(rockObject, rockForwardFloatDistance);
@@ -308,7 +309,7 @@ namespace Valve.VR.InteractionSystem
             return rockObject;
         }
 
-        IEnumerator rockAbilityCoroutine(GameObject obj, Vector3 finalObjectPosition, float speed, TrackedHand hand, float rockForwardFloatDistance)
+        IEnumerator rockAbilityCoroutine(GameObject obj, float speed, TrackedHand hand, float rockForwardFloatDistance)
         {
             yield return floatInFrontOfHand(obj, hand, rockForwardFloatDistance);
 
@@ -332,7 +333,7 @@ namespace Valve.VR.InteractionSystem
 
         private void moveObjectBelowGround(GameObject obj)
         {
-            obj.transform.position = new Vector3(obj.transform.position.x, -1f * obj.transform.localScale.y, obj.transform.position.z);
+            obj.transform.position = new Vector3(obj.transform.position.x, Terrain.activeTerrain.SampleHeight(obj.transform.position) - obj.transform.localScale.y, obj.transform.position.z);
         }
 
         private void faceObjectToPlayer(GameObject obj)

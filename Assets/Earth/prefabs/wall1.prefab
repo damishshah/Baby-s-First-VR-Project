@@ -60,7 +60,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -876546973899608171, guid: 68764f50758648644820afa8d840b78f, type: 3}
+  - {fileID: 2100000, guid: 386d19e4705f2a347b70d2d8071af5a4, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -88,7 +88,7 @@ MeshCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3930898786722673417}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 13400000, guid: 480a4b5490d63944485b2b8bd6af6e5e, type: 2}
   m_IsTrigger: 0
   m_Enabled: 1
   serializedVersion: 4
@@ -109,3 +109,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   replacement: {fileID: 5384324786428212239, guid: 1732312575157c14a983d581ef1cc79c,
     type: 3}
+  radius: 5
+  power: 500
