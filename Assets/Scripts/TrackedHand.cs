@@ -42,19 +42,7 @@ namespace Valve.VR.InteractionSystem
                 return false;
             }
 
-            SteamVR_Behaviour_Skeleton skeleton = this.hand.skeleton;
-            if (skeleton != null)
-            {
-                return (
-                    // skeleton.thumbCurl >= closedThumbAmount &&
-                    skeleton.indexCurl >= closedFingerAmount &&
-                    skeleton.middleCurl >= closedFingerAmount &&
-                    skeleton.ringCurl >= closedFingerAmount
-                    // && skeleton.pinkyCurl >= closedFingerAmount
-                    );
-            }
-
-            return false;
+            return this.hand.IsGrabbingWithType(GrabTypes.Grip);
         }
 
         public SteamVR_Behaviour_Skeleton getSkeleton()
