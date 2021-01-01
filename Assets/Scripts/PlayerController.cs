@@ -16,6 +16,7 @@ namespace Valve.VR.InteractionSystem {
         private const float lookBackWindowInSeconds = 0.3f;
         private const float velocityThreshold = 0.3f;
         private const float verticalMoveDistanceThreshold = 0.35f;
+        private const float jumpGestureMoveDistanceThreshold = 0.5f;
         private const float punchDistanceThreshold = 0.25f;
         private const float minimalDistanceThreshold = 0.1f;
         private const float rockPunchActivationDistance = 0.6f;
@@ -35,6 +36,7 @@ namespace Valve.VR.InteractionSystem {
 
         public GameObject[] WallPrefabs;
         public GameObject[] RockPrefabs;
+        public GameObject[] JumpRockPrefabs;
 
         void Start () {
             // Object instantiation
@@ -161,7 +163,7 @@ namespace Valve.VR.InteractionSystem {
         }
 
         private bool isFistAndMovingDown (TrackedHand hand) {
-            return isFistAndMovingInDirection (hand, lookBackWindowInSeconds, Vector3.down, verticalMoveDistanceThreshold);
+            return isFistAndMovingInDirection (hand, lookBackWindowInSeconds, Vector3.down, jumpGestureMoveDistanceThreshold);
         }
 
         private bool isFistAndMovingInDirection (TrackedHand hand, float lookBackWindowInSeconds, Vector3 direction, float distanceThreshold) {
@@ -274,7 +276,7 @@ namespace Valve.VR.InteractionSystem {
         float rockForwardFloatDistance = .7f;
         private void summonRock (TrackedHand hand) {
             GameObject rock = spawnRock ();
-
+            
             StartCoroutine (rockAbilityCoroutine (rock, rockSummonSpeed, hand, rockForwardFloatDistance));
         }
 
@@ -304,7 +306,7 @@ namespace Valve.VR.InteractionSystem {
             rockObject.GetComponent<Rigidbody> ().AddForce (direction * force);
         }
 
-        // ------------------------------------------------------- Physics Methods -------------------------------------------------------
+        // ------------------------------------------------------- Jumping Methods -------------------------------------------------------
 
         // Using the average vector over the last 'lookBackWindowInSeconds' between two hands, determines the direction in which to make the player jump.
         private void jump (TrackedHand left, TrackedHand right) {
@@ -313,13 +315,34 @@ namespace Valve.VR.InteractionSystem {
             Vector3 rightMovementVector = right.getPosition () - right.pastControllerPositions[left.getIndexForPastTimeSeconds (lookBackWindowInSeconds) - 1].position;
             Vector3 midway = leftMovementVector.normalized + rightMovementVector.normalized;
             float averageVelocity = (left.getVelocity ().magnitude + right.getVelocity ().magnitude ) / 2.0f;
+            spawnJumpRock(midway, averageVelocity);
             playerRigidBody.AddForce (-1f * midway.normalized * averageVelocity * jumpSpeed);;
+        }
+
+        GameObject jumpRockObject = null;
+        private void spawnJumpRock (Vector3 rockDirection, float speed) {
+            jumpRockObject = Instantiate (JumpRockPrefabs[0]);
+            jumpRockObject.gameObject.transform.rotation = Quaternion.LookRotation(rockDirection);
+
+            moveObjectBelowGround(jumpRockObject);
+            moveObjectUnderneathPlayer(jumpRockObject);
+
+            Vector3 finalJumpRockPosition = new Vector3 (jumpRockObject.transform.position.x, Terrain.activeTerrain.SampleHeight (jumpRockObject.transform.position) + jumpRockObject.transform.localScale.z/3f, jumpRockObject.transform.position.z);
+            StartCoroutine (wallRisingCoroutine (jumpRockObject, finalJumpRockPosition, speed));
+        }
+
+        IEnumerator jumpRockRisingCoroutine (GameObject obj, Vector3 finalObjectPosition, float speed) {
+            yield return riseAtSpeed (obj, finalObjectPosition, speed);
         }
 
         // ------------------------------------------------------- Util Methods -------------------------------------------------------
 
         private void spawnObjectInFrontOfPlayer (GameObject obj, float forwardDistance) {
             obj.transform.position = transform.Find ("SteamVRObjects/VRCamera").transform.position + (transform.Find ("SteamVRObjects/VRCamera").transform.forward * forwardDistance);
+        }
+
+        private void moveObjectUnderneathPlayer (GameObject obj) {
+            obj.transform.position = transform.Find ("SteamVRObjects/VRCamera").transform.position;
         }
 
         private void moveObjectBelowGround (GameObject obj) {
@@ -344,7 +367,7 @@ namespace Valve.VR.InteractionSystem {
         float floatMovementThreshold = .3f;
         IEnumerator floatInFrontOfHand (GameObject obj, TrackedHand hand, float forwardDistance) {
             while (obj != null && rockIsActive && recognizePlayerFist (hand)) {
-                Vector3 finalPosition = getFloatingPositionInFrontOfHand (hand, forwardDistance);
+                Vector3 finalPosition = hand.getFloatingPositionInFrontOfHand (forwardDistance);
 
                 if (Vector3.Distance (obj.transform.position, finalPosition) > floatMovementThreshold) {
                     Vector3 direction = finalPosition - obj.transform.position;
@@ -353,10 +376,6 @@ namespace Valve.VR.InteractionSystem {
 
                 yield return null;
             }
-        }
-
-        private Vector3 getFloatingPositionInFrontOfHand (TrackedHand hand, float forwardDistance) {
-            return hand.getPosition () + (-1f * hand.getTransform ().up * forwardDistance);
         }
 
         private void resetRockAbility () {

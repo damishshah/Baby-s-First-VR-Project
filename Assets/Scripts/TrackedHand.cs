@@ -68,6 +68,10 @@ namespace Valve.VR.InteractionSystem
         // Returns what would be the index in the pastControllerPosition array for the given number of seconds in the past. Does no checking if the index is within the array size.
         public int getIndexForPastTimeSeconds(float lookBackWindowInSeconds) { return (int)(lookBackWindowInSeconds / handPositionMemoryInterval); }
 
+        public Vector3 getFloatingPositionInFrontOfHand (float forwardDistance) {
+            return this.getPosition () + (-1f * this.getTransform ().up * forwardDistance);
+        }
+
         public void invalidateTrackingMemory()
         {
             foreach (var controllerPosition in pastControllerPositions)
